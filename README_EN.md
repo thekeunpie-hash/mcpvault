@@ -1,4 +1,4 @@
-﻿# ⚡ MCP Vault (`mcpv`)
+# ⚡ MCP Vault (`mcpv`)
 
 > **The Ultimate Performance Booster for AI Agents**  
 > _"Reduce system lag by 99%, eliminate loading times, and cut token costs by 90%."_
@@ -13,7 +13,7 @@
 </div>
 
 <div align="right">
-  <a href="README_KR.md">🇰🇷 한국어</a> | <a href="README_CN.md">🇨🇳 中文</a>
+  <a href="README.md">🇰🇷 한국어 버전</a> | <a href="README_CN.md">🇨🇳 中文版本</a>
 </div>
 
 <br>
@@ -109,78 +109,20 @@ Verified MCP server configuration used by the developer. It creates the best syn
 
 ---
 
-# 🚀 Installation & Running Guide (Windows / uv)
+## 📦 Installation in 3 Seconds
 
-We recommend installing and running this project in an **independent virtual environment (.venv)** using `uv`.
-
-> ✅ Execute the commands below in your **PowerShell** at the **project root folder** (where this README is located).
-
----
-
-## 0. Prerequisites
-- Windows 10/11
-- PowerShell
-- `uv` installed
-  - Check installation: `uv --version`
-
----
-
-## 1. Clean Up Existing Processes (Optional)
-To avoid conflicts, stop any existing `mcpv` or Python processes if you are reinstalling.
-
-> ⚠️ Stopping `python` processes might affect other tasks. Run with caution.
+Just type these 3 lines. We handle the rest.
 
 ```powershell
-Stop-Process -Name "mcpv" -Force -ErrorAction SilentlyContinue
-Stop-Process -Name "python" -Force -ErrorAction SilentlyContinue
+# 1. Go to directory
+cd mcpv
+
+# 2. Install package
+pip install .
+
+# 3. Ignite Booster (Initialize)
+mcpv init
 ```
-
----
-
-## 2. Create Virtual Environment & Install Package
-Use `uv` to create a clean environment isolated from the system Python.
-
-```powershell
-# Install uv (if not already installed)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Create virtual environment (.venv)
-uv venv
-
-# Install mcpv package in the virtual environment
-uv pip install .
-```
-
----
-
-## 3. Register Antigravity Settings (Critical)
-Run the installation command using the Python from the created virtual environment.
-
-```powershell
-# Register mcpv to Antigravity using the internal .venv Python.
-.venv\Scripts\python -m mcpv install --force
-```
-
----
-
-## 4. Run
-Double-click the **`Antigravity Boost (mcpv)`** shortcut created on your desktop.
-
----
-
-## (Optional) Verify Installation
-Check if the `mcpv` module loads correctly within the `.venv`.
-
-```powershell
-.venv\Scripts\python -m mcpv --help
-```
-
----
-
-☕ **Support**  
-If this project helped you save tokens and time, consider buying me a coffee!  
-
-[<img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="180" />](https://www.buymeacoffee.com/mcpv)
 
 <br>
 
