@@ -1,4 +1,5 @@
 ﻿import os
+import json
 import subprocess
 import logging
 import sys
@@ -63,6 +64,42 @@ ALLOWED_EXTENSIONS = {".py", ".js", ".ts", ".md", ".json", ".txt", ".html", ".cs
 mcp = FastMCP("mcpv", log_level="DEBUG")
 
 @mcp.tool()
+def get_vault_info() -> str:
+    """
+    [System Discovery] Returns a list of available upstream MCP servers in the Vault.
+    You MUST use these 'server_name's when calling 'use_upstream_tool'.
+    """
+    from .vault import BACKUP_FILE
+    
+    if not BACKUP_FILE.exists():
+        return "Vault is empty. No upstream servers configured."
+        
+    try:
+        with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            
+        servers = config.get("mcpServers", {})
+        if not servers:
+            return "Vault config exists but no servers found."
+            
+        report = ["=== 🛡️ Available MCP Servers in Vault ==="]
+        for name, cfg in servers.items():
+            status = "DISABLED" if cfg.get("disabled", False) else "ACTIVE"
+            cmd = cfg.get("command", "unknown")
+            report.append(f"- Server ID: '{name}' ({status})")
+            report.append(f"  Command: {cmd}")
+            
+        report.append("\n[Instruction]")
+        report.append("To use tools from these servers, use:")
+        report.append("use_upstream_tool(server_name='Server ID', tool_name='Tool Name', args={...})")
+        
+        return "\n".join(report)
+        
+    except Exception as e:
+        return f"Error reading vault info: {str(e)}"
+
+
+@mcp.tool()
 def get_initial_context(force: bool = False) -> str:
     """[Smart Valve] Loads the codebase context via Repomix."""
     logger.info(f"Function 'get_initial_context' called. force={force}")
@@ -72,6 +109,21 @@ def get_initial_context(force: bool = False) -> str:
     
     if not allowed:
         return msg
+
+    # 2. [Added] Get MCP Server Info
+    # ---------------------------------------------------------
+    vault_info = "=== MCP Servers ===\nNo servers found."
+    try:
+        from .vault import BACKUP_FILE
+        if BACKUP_FILE.exists():
+            with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+                srvs = json.load(f).get("mcpServers", {})
+                active_srvs = [k for k, v in srvs.items() if not v.get("disabled")]
+                vault_info = f"=== 🛡️ Active MCP Servers ===\n" + "\n".join([f"- {s}" for s in active_srvs])
+                vault_info += "\n(Use these names for 'use_upstream_tool')"
+    except:
+        pass
+    # ---------------------------------------------------------
 
     try:
         # CWD가 이미 변경되었으므로 명령어만 실행하면 됨
@@ -108,8 +160,16 @@ def get_initial_context(force: bool = False) -> str:
             
         output_len = len(result.stdout)
         logger.info(f"📝 Context fetched successfully! Length: {output_len} chars")
+
+        output = result.stdout
         
-        return f"=== Vault Context ===\n{result.stdout}\n=== End Vault ==="
+        # [Modified] Combine Vault Info
+        final_output = f"{vault_info}\n\n=== 📂 Project Context ===\n{output}\n=== End Vault ==="
+        
+        # Cache update
+        valve.update_cache(ROOT_DIR, final_output)
+        
+        return final_output
         
     except subprocess.TimeoutExpired:
         logger.error("⏰ Repomix timed out.")
