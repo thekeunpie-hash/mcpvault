@@ -71,6 +71,10 @@ validate_toml.py
 <files>
 This section contains the contents of the repository's files.
 
+<file path="check_bytes.py">
+content = f.read(20)
+</file>
+
 <file path="convert.py">
 GITHUB_PAT = ""  # 사용자의 PAT (비워두면 실행 시 입력받음)
 REPO_URL = "https://github.com/thekeunpie-hash/mcpvault"
@@ -102,6 +106,14 @@ temp_dir = "temp_repo_clone"
 pat = GITHUB_PAT
 ⋮----
 pat = input("GitHub PAT를 입력하세요: ").strip()
+</file>
+
+<file path="create_toml.py">
+content = """[project]
+</file>
+
+<file path="force_clean.py">
+content = b"""[project]
 </file>
 
 <file path="Hello.md">
@@ -3304,62 +3316,15 @@ action = "SKIP"
 # 4. 코드 블록 내부 내용 수집
 </file>
 
+<file path="src/mcpv/__init__.py">
+
+</file>
+
 <file path="src/mcpv/__main__.py">
 
 </file>
 
 <file path="src/mcpv/dashboard.py">
-
-</file>
-
-<file path=".gitignore">
-__pycache__/
-*.pyc
-build/
-dist/
-*.egg-info/
-.venv/
-env/
-.idea/
-.vscode/
-.env
-upload.ps1
-</file>
-
-<file path="check_bytes.py">
-content = f.read(20)
-</file>
-
-<file path="create_toml.py">
-content = """[project]
-</file>
-
-<file path="force_clean.py">
-content = b"""[project]
-</file>
-
-<file path="pyproject.toml">
-[project]
-name = "mcpv"
-version = "0.2.7.2"
-description = "MCP Vault: Secure Gateway & Booster for Antigravity"
-readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-    "fastmcp>=0.1.0",
-    "mcp>=1.0.0",
-    "typer>=0.9.0",
-]
-
-[project.scripts]
-mcpv = "mcpv.main:app"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-</file>
-
-<file path="src/mcpv/__init__.py">
 
 </file>
 
@@ -3378,6 +3343,41 @@ def check(self, force: bool) -> tuple[bool, str]
 data = tomllib.load(f)
 ⋮----
 # Print hex of first 50 bytes
+</file>
+
+<file path=".gitignore">
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+.venv/
+env/
+.idea/
+.vscode/
+.env
+upload.ps1
+</file>
+
+<file path="pyproject.toml">
+[project]
+name = "mcpv"
+version = "0.2.8"
+description = "MCP Vault: Secure Gateway & Booster for Antigravity"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=0.1.0",
+    "mcp>=1.0.0",
+    "typer>=0.9.0",
+]
+
+[project.scripts]
+mcpv = "mcpv.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 </file>
 
 <file path="README_CN.md">
@@ -3710,8 +3710,6 @@ my_config = {
 ⋮----
 def _install_booster(self)
 ⋮----
-# (기존 코드와 동일하므로 생략하지 않고 전체 제공)
-⋮----
 batch_content = f"""@echo off
 ⋮----
 def _create_shortcut_vbs(self, target, name, icon)
@@ -3726,8 +3724,15 @@ async def get_session(self, server_name)
 with open(BACKUP_FILE, "r") as f: config = json.load(f)
 srv = config["mcpServers"].get(server_name)
 ⋮----
-# [수정됨] 상류 서버 실행 시 CI=true 강제 주입 (npx 질문 방지)
+# [수정됨] 상류 서버 실행 시 CI=true 강제 주입
 upstream_env = os.environ.copy()
+⋮----
+cmd = srv["command"]
+resolved_cmd = shutil.which(cmd)
+⋮----
+resolved_cmd = shutil.which(f"{cmd}.cmd") or shutil.which(f"{cmd}.exe")
+⋮----
+final_cmd = resolved_cmd if resolved_cmd else cmd
 ⋮----
 params = StdioServerParameters(
 ⋮----
@@ -3851,7 +3856,7 @@ Verified MCP server configuration used by the developer. It creates the best syn
 
 <file path="init.ps1">
 git add .
-git commit -m "Initial commit.........."
+git commit -m "Initial commit............."
 git push -u origin main
 </file>
 

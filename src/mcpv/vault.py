@@ -165,7 +165,7 @@ exit
         final_cmd = resolved_cmd if resolved_cmd else cmd
 
         params = StdioServerParameters(
-            command=final_cmd,
+            command=final_cmd,       # <--- ✅ 수정: Windows 호환 처리가 된 final_cmd 사용
             args=srv.get("args", []),
             env=upstream_env
         )
