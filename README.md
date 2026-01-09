@@ -64,10 +64,49 @@ Have you ever felt this while using AI Agents (Antigravity, Cursor)?
 
 ### 3️⃣ Gateway Hijacking (Secure Vault)
 **"Stop struggling with complex configs"**
-- **Zero-Latency Startup**: Only scans directories when the agent actually requests them. No timeouts on large repos.
+- **Root Path Locking**: Captures the directory where you run `mcpv install` and forces the agent to ALWAYS see that directory as the project root. No more "File not found" errors when the agent drifts to other folders.
 - Automatically migrates existing complex MCP settings to a secure Vault.
 - Original config is safely backed up to `mcp_config.original.json`.
-- The agent talks only to `mcpv`, but all tools work perfectly behind the scenes.
+
+### 4️⃣ Smart Router (Flattened Execution)
+**"One Tool to Rule Them All"**
+- **Unified Interface**: The agent doesn't need to know which server has which tool. It just calls `run_tool(name="...")`.
+- **Auto-Correction**: Did the agent make a typo? Did it try to call a server name? `mcpv` automatically finds the correct tool or suggests the right name.
+- **Zero-Latency Startup**: Only connects to upstream servers when their tools are actually needed.
+
+<br>
+
+---
+
+## 📦 Installation
+
+This project is optimized for **Windows**. We recommend using `uv` for a fast and clean installation.
+
+```powershell
+# Install using uv (Recommended)
+uv pip install . --system
+
+# OR using standard pip
+pip install .
+```
+
+After installing the package, **you must run the install command** to configure the vault:
+
+```powershell
+mcpv install
+```
+
+<br>
+
+---
+
+## 💻 Commands
+
+| Command | Description |
+| :--- | :--- |
+| `mcpv install` | **(Essential)** Installs `mcpv` as the primary gateway, migrates existing config, and **locks the current directory** as the project root. |
+| `mcpv install --force` | Overwrites existing `mcpv` installation if found. |
+| `mcpv start` | **(Internal)** Starts the MCP server. Used by the Antigravity agent, not for humans. |
 
 <br>
 
