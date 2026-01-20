@@ -2,6 +2,7 @@
 import sys
 import shutil
 import os
+import subprocess
 from pathlib import Path
 from mcp.client.session import ClientSession
 from mcp.client.stdio import stdio_client
@@ -183,12 +184,45 @@ exit
         try:
             with open(BOOSTER_SCRIPT, "w", encoding="utf-8") as f:
                 f.write(batch_content)
-            self._create_shortcut_vbs(str(BOOSTER_SCRIPT), "Antigravity Boost (mcpv)", str(ANTIGRAVITY_EXE))
+            self._create_shortcut(str(BOOSTER_SCRIPT), "Antigravity Boost (mcpv)", str(ANTIGRAVITY_EXE))
             print("   -> Booster script created.", file=sys.stderr)
         except PermissionError:
             print(f"❌ PERMISSION DENIED: Cannot write booster script to '{BOOSTER_SCRIPT}'", file=sys.stderr)
         except Exception as e:
             print(f"⚠️  Booster installation failed: {e}", file=sys.stderr)
+
+    def _create_shortcut(self, target, name, icon):
+        desktop = Path(os.environ["USERPROFILE"]) / "Desktop"
+        link_path = desktop / f"{name}.lnk"
+        
+        # PowerShell command to create shortcut
+        ps_command = (
+            f'$ws = New-Object -ComObject WScript.Shell; '
+            f'$s = $ws.CreateShortcut("{link_path}"); '
+            f'$s.TargetPath = "cmd.exe"; '
+            f'$s.Arguments = "/c ""{target}"""; '
+            f'$s.IconLocation = "{icon},0"; '
+            f'$s.WindowStyle = 7; '
+            f'$s.Save()'
+        )
+        
+        try:
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_command], 
+                check=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE
+            )
+            )
+        except Exception as e:
+             # Try to decode stderr if possible
+             err_msg = str(e)
+             if isinstance(e, subprocess.CalledProcessError) and e.stderr:
+                 err_msg = e.stderr.decode(errors='replace').strip()
+             
+             print(f"⚠️  PowerShell shortcut creation failed: {err_msg}", file=sys.stderr)
+             print("   -> Attempting legacy VBScript fallback...", file=sys.stderr)
+             self._create_shortcut_vbs(target, name, icon)
 
     def _create_shortcut_vbs(self, target, name, icon):
         desktop = Path(os.environ["USERPROFILE"]) / "Desktop"
@@ -209,6 +243,9 @@ exit
             os.system(f"cscript //nologo {vbs_file}")
         finally:
             if vbs_file.exists(): os.remove(vbs_file)
+
+
+
 
     async def get_session(self, server_name):
         if server_name in self.sessions: return self.sessions[server_name]

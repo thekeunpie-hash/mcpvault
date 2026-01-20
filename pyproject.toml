@@ -1,6 +1,6 @@
 [project]
 name = "mcpv"
-version = "0.3.3"
+version = "0.3.4"
 description = "MCP Vault: Secure Gateway & Booster for Antigravity"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,3 +16,4 @@ mcpv = "mcpv.main:app"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
