@@ -1,4 +1,4 @@
-﻿import os
+import os
 import asyncio
 import logging
 import json
@@ -24,7 +24,7 @@ if ROOT_PATH_FILE.exists():
     except: pass
 ROOT_DIR = Path.cwd().resolve()
 
-mcp = FastMCP("mcpv", log_level="DEBUG")
+mcp = FastMCP("mcpv")
 
 # === 🌟 [핵심 1] 글로벌 툴 레지스트리 (지도) ===
 # 구조: { "tool_name": { "server": "server_name", "desc": "description...", "args": "arg1, arg2" } }
