@@ -26,6 +26,10 @@ ROOT_DIR = Path.cwd().resolve()
 
 mcp = FastMCP("mcpv")
 
+# === Timeout Constants (REQ-01, REQ-02) ===
+GATHER_TIMEOUT = 30.0  # Overall timeout for connecting to all servers
+TOOL_LIST_TIMEOUT = 3.0  # Timeout per server for listing tools
+
 # === 🌟 [핵심 1] 글로벌 툴 레지스트리 (지도) ===
 # 구조: { "tool_name": { "server": "server_name", "desc": "description...", "args": "arg1, arg2" } }
 TOOL_REGISTRY = {}
@@ -42,7 +46,8 @@ async def _build_registry():
             with open(TOOL_INDEX_FILE, "r", encoding="utf-8") as f:
                 TOOL_REGISTRY = json.load(f)
                 logger.info("⚡ Tool Registry loaded from local cache.")
-        except: pass
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Failed to load tool cache: {e}")
 
     if not BACKUP_FILE.exists(): return
     
@@ -51,16 +56,26 @@ async def _build_registry():
     
     active_servers = [k for k, v in config.get("mcpServers", {}).items() if not v.get("disabled")]
     
-    # 병렬 연결 시도
+    # 병렬 연결 시도 (REQ-01: timeout wrapper)
     tasks = [manager.get_session(name) for name in active_servers]
-    sessions = await asyncio.gather(*tasks, return_exceptions=True)
+    try:
+        sessions = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=GATHER_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        logger.warning(f"Timeout ({GATHER_TIMEOUT}s) connecting to servers")
+        return  # Exit early, use cached registry if available
     
     new_registry = {}
     
     for name, session in zip(active_servers, sessions):
-        if not session or isinstance(session, Exception): continue
+        if not session or isinstance(session, Exception):
+            if isinstance(session, Exception):
+                logger.warning(f"Failed to connect to {name}: {session}")
+            continue
         try:
-            tools = await asyncio.wait_for(session.list_tools(), timeout=3.0)
+            tools = await asyncio.wait_for(session.list_tools(), timeout=TOOL_LIST_TIMEOUT)
             for t in tools.tools:
                 key = t.name
                 if key in new_registry:
@@ -73,7 +88,12 @@ async def _build_registry():
                     "desc": t.description[:150] if t.description else "No description",
                     "args": ", ".join(args)
                 }
-        except: continue
+        except asyncio.TimeoutError:
+            logger.warning(f"Timeout listing tools from {name}")
+            continue
+        except Exception as e:
+            logger.warning(f"Error listing tools from {name}: {e}")
+            continue
             
     if new_registry:
         TOOL_REGISTRY = new_registry
@@ -81,7 +101,8 @@ async def _build_registry():
         try:
             with open(TOOL_INDEX_FILE, "w", encoding="utf-8") as f:
                 json.dump(TOOL_REGISTRY, f, indent=2)
-        except: pass
+        except OSError as e:
+            logger.warning(f"Failed to save tool cache: {e}")
         logger.info(f"🗺️ Tool Registry Rebuilt and Cached: {len(TOOL_REGISTRY)} tools found.")
 
 # === 🌟 [핵심 2] 스마트 컨텍스트 주입 (압축 모드) ===
