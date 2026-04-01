@@ -3,10 +3,14 @@ import sys
 import shutil
 import os
 import subprocess
+import asyncio
 from pathlib import Path
 from mcp.client.session import ClientSession
 from mcp.client.stdio import stdio_client
 from contextlib import AsyncExitStack
+
+# === Timeout Constants (REQ-02, REQ-05) ===
+CONNECTION_TIMEOUT = 15.0  # Timeout for session establishment
 
 # [Import 호환성 처리]
 try:
@@ -250,15 +254,23 @@ exit
 
 
     async def get_session(self, server_name):
-        if server_name in self.sessions: return self.sessions[server_name]
-        if not BACKUP_FILE.exists(): raise FileNotFoundError("Vault is empty.")
-        with open(BACKUP_FILE, "r") as f: config = json.load(f)
+        """Get or create session for server. Returns None on timeout (REQ-05)."""
+        if server_name in self.sessions:
+            return self.sessions[server_name]
+        
+        if not BACKUP_FILE.exists():
+            raise FileNotFoundError("Vault is empty.")
+        
+        with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        
         srv = config["mcpServers"].get(server_name)
-        if not srv: raise ValueError(f"Server {server_name} not found.")
+        if not srv:
+            raise ValueError(f"Server {server_name} not found.")
         
         # [수정됨] 상류 서버 실행 시 CI=true 강제 주입
         upstream_env = os.environ.copy()
-        upstream_env["CI"] = "true" 
+        upstream_env["CI"] = "true"
         upstream_env.update(srv.get("env", {}))
 
         # [핵심 수정] Windows에서 npx 등의 명령어 위치 찾기 (npx -> npx.cmd)
@@ -278,11 +290,39 @@ exit
             env=upstream_env
         )
         
-        read, write = await self.stack.enter_async_context(stdio_client(params))
-        session = await self.stack.enter_async_context(ClientSession(read, write))
-        await session.initialize()
-        self.sessions[server_name] = session
-        return session
+        # REQ-02, REQ-05: Wrap session establishment with timeout
+        # Use temporary stack to prevent resource leak on partial failure
+        temp_stack = AsyncExitStack()
+        try:
+            # Establish connection with timeout
+            read, write = await asyncio.wait_for(
+                temp_stack.enter_async_context(stdio_client(params)),
+                timeout=CONNECTION_TIMEOUT
+            )
+            session = await asyncio.wait_for(
+                temp_stack.enter_async_context(ClientSession(read, write)),
+                timeout=CONNECTION_TIMEOUT
+            )
+            await asyncio.wait_for(session.initialize(), timeout=CONNECTION_TIMEOUT)
+            
+            # Success: transfer resources to permanent stack
+            # Pop from temp and push to permanent (resources stay alive)
+            for cm in temp_stack._exit_callbacks:
+                self.stack._exit_callbacks.append(cm)
+            temp_stack._exit_callbacks.clear()
+            
+            self.sessions[server_name] = session
+            return session
+        except asyncio.TimeoutError:
+            # Graceful degradation: cleanup and return None
+            await temp_stack.aclose()  # Clean up any partial resources
+            print(f"⚠️ Timeout ({CONNECTION_TIMEOUT}s) connecting to {server_name}", file=sys.stderr)
+            return None
+        except Exception as e:
+            # Cleanup on any failure
+            await temp_stack.aclose()
+            print(f"⚠️ Error connecting to {server_name}: {e}", file=sys.stderr)
+            return None
 
     async def cleanup(self):
         await self.stack.aclose()

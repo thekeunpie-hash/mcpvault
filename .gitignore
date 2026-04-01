@@ -10,3 +10,4 @@ env/
 .env
 upload.ps1
 tool_index.json
+PLAN/
