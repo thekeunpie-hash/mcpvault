@@ -8,6 +8,7 @@ from pathlib import Path
 from mcp.client.session import ClientSession
 from mcp.client.stdio import stdio_client
 from contextlib import AsyncExitStack
+from . import platform_utils
 
 # === Timeout Constants (REQ-02, REQ-05) ===
 CONNECTION_TIMEOUT = 15.0  # Timeout for session establishment
@@ -198,10 +199,26 @@ exit
             print(f"⚠️  Booster installation failed: {e}", file=sys.stderr)
 
     def _create_shortcut(self, target, name, icon):
+        """Create cross-platform launcher using platform_utils."""
+        try:
+            # Target is the batch script, icon is the Antigravity executable
+            launcher_path = platform_utils.create_launcher(
+                name=name,
+                target=target,
+                icon=icon,
+                hidden_window=True
+            )
+            print(f"   -> Launcher created at: {launcher_path}", file=sys.stderr)
+        except Exception as e:
+            print(f"⚠️  Cross-platform launcher creation failed: {e}", file=sys.stderr)
+            print("   -> Attempting Windows-only fallback...", file=sys.stderr)
+            self._create_shortcut_windows_only(target, name, icon)
+    
+    def _create_shortcut_windows_only(self, target, name, icon):
+        """Fallback Windows-only shortcut creation (legacy behavior)."""
         desktop = Path(os.environ["USERPROFILE"]) / "Desktop"
         link_path = desktop / f"{name}.lnk"
         
-        # PowerShell command to create shortcut
         ps_command = (
             f'$ws = New-Object -ComObject WScript.Shell; '
             f'$s = $ws.CreateShortcut("{link_path}"); '
@@ -214,41 +231,16 @@ exit
         
         try:
             subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_command], 
-                check=True, 
-                stdout=subprocess.PIPE, 
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_command],
+                check=True,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-
         except Exception as e:
-             # Try to decode stderr if possible
-             err_msg = str(e)
-             if isinstance(e, subprocess.CalledProcessError) and e.stderr:
-                 err_msg = e.stderr.decode(errors='replace').strip()
-             
-             print(f"⚠️  PowerShell shortcut creation failed: {err_msg}", file=sys.stderr)
-             print("   -> Attempting legacy VBScript fallback...", file=sys.stderr)
-             self._create_shortcut_vbs(target, name, icon)
-
-    def _create_shortcut_vbs(self, target, name, icon):
-        desktop = Path(os.environ["USERPROFILE"]) / "Desktop"
-        link_path = desktop / f"{name}.lnk"
-        vbs_script = f'''
-            Set oWS = WScript.CreateObject("WScript.Shell")
-            sLinkFile = "{link_path}"
-            Set oLink = oWS.CreateShortcut(sLinkFile)
-            oLink.TargetPath = "cmd.exe"
-            oLink.Arguments = "/c ""{target}"""
-            oLink.IconLocation = "{icon},0"
-            oLink.WindowStyle = 7 
-            oLink.Save
-        '''
-        vbs_file = CONFIG_DIR / "create_shortcut.vbs"
-        try:
-            with open(vbs_file, "w", encoding="utf-8") as f: f.write(vbs_script)
-            os.system(f"cscript //nologo {vbs_file}")
-        finally:
-            if vbs_file.exists(): os.remove(vbs_file)
+            err_msg = str(e)
+            if isinstance(e, subprocess.CalledProcessError) and e.stderr:
+                err_msg = e.stderr.decode(errors='replace').strip()
+            print(f"⚠️  Windows fallback failed: {err_msg}", file=sys.stderr)
 
 
 
