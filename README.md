@@ -6,6 +6,7 @@
 <div align="center">
 
 ![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-0.4.0-F7CA3F.svg?style=flat-square)
 ![Python](https://img.shields.io/badge/Python-3.10+-F7CA3F.svg?style=flat-square&logo=python&logoColor=black)
 ![Platforms](https://img.shields.io/badge/OS-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-Accelerated-brightgreen.svg?style=flat-square)
@@ -81,6 +82,23 @@ Have you ever felt this while using AI Agents (Antigravity, Cursor)?
 - **`mcpv_admin`**: A single tool to manage your entire MCP ecosystem.
 - **Live Search**: Find any tool by searching through descriptions across all servers.
 - **Dynamic Optimization**: Enable/disable servers or specific tools on-the-fly to prune the agent's context and save tokens.
+
+<br>
+
+---
+
+## 🛡️ Security Features (v0.4.0)
+
+**Enterprise-grade security hardening:**
+
+| Feature | Protection | Implementation |
+|---------|------------|----------------|
+| **Race Condition Prevention** | Concurrent session safety | Double-checked locking with `asyncio.Lock` |
+| **Resource Management** | Memory leak prevention | AsyncExitStack reference tracking |
+| **Shell Injection Defense** | Command execution safety | Dangerous character blocking (`|`, `&`, `;`, `` ` ``, `$`, etc.) |
+| **Path Traversal Protection** | Directory escape prevention | `os.path.commonpath()` containment validation |
+| **PowerShell Escaping** | Command injection prevention | Backtick escaping for special characters |
+| **Error Handling** | Debugging visibility | Specific exception types instead of bare except |
 
 <br>
 
