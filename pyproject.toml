@@ -1,6 +1,6 @@
 [project]
 name = "mcpv"
-version = "0.4.0"
+version = "2.1.0"
 description = "MCP Vault: Secure Gateway & Booster for Antigravity - Cross-Platform Support"
 readme = "README.md"
 requires-python = ">=3.10"
