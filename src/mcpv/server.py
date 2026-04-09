@@ -6,9 +6,10 @@ from pathlib import Path
 from fastmcp import FastMCP
 from .valve import valve
 from .vault import manager
+from .platform_abstraction import platform_info
 
-# 1. 설정 및 로깅 (기존 유지)
-CONFIG_DIR = Path.home() / ".gemini" / "antigravity"
+# 1. 설정 및 로깅 (Cross-platform)
+CONFIG_DIR = platform_info.get_config_dir()
 try: CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 except: pass
 LOG_FILE = CONFIG_DIR / "mcpv_debug.log"
@@ -305,21 +306,43 @@ def read_file(path: str) -> str:
     """Reads a file from the project root."""
     try:
         p = (ROOT_DIR / path).resolve()
-        if not str(p).startswith(str(ROOT_DIR)): return "⛔ Access Denied"
+        # Resolve symlinks and verify strict containment
+        p = p.resolve(strict=True)
+        try:
+            # Use os.path.commonpath for robust containment check
+            os.path.commonpath([ROOT_DIR, p])
+        except ValueError:
+            return "⛔ Access Denied"
+        if not p.is_relative_to(ROOT_DIR):
+            return "⛔ Access Denied"
         return p.read_text(encoding="utf-8", errors="replace")
-    except Exception as e: return str(e)
+    except FileNotFoundError:
+        return "❌ File not found"
+    except Exception as e:
+        return f"❌ Error: {e}"
 
 @mcp.tool()
 def list_directory(path: str = ".") -> str:
     """Lists files in a directory."""
     try:
         p = (ROOT_DIR / path).resolve()
+        # Resolve symlinks and verify strict containment
+        p = p.resolve(strict=True)
+        try:
+            os.path.commonpath([ROOT_DIR, p])
+        except ValueError:
+            return "⛔ Access Denied"
+        if not p.is_relative_to(ROOT_DIR):
+            return "⛔ Access Denied"
         out = []
         with os.scandir(p) as it:
             for e in it:
                 if not e.name.startswith("."): out.append(e.name)
         return "\n".join(out)
-    except Exception as e: return str(e)
+    except FileNotFoundError:
+        return "❌ Directory not found"
+    except Exception as e:
+        return f"❌ Error: {e}"
 
 # JIT Initialized on first call.
 # @mcp.on_startup()

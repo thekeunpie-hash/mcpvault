@@ -8,6 +8,8 @@ from pathlib import Path
 from mcp.client.session import ClientSession
 from mcp.client.stdio import stdio_client
 from contextlib import AsyncExitStack
+from . import platform_utils
+from .platform_abstraction import platform_info
 
 # === Timeout Constants (REQ-02, REQ-05) ===
 CONNECTION_TIMEOUT = 15.0  # Timeout for session establishment
@@ -24,21 +26,24 @@ except ImportError:
 
 # 경로 설정
 HOME_DIR = Path.home()
-CONFIG_DIR = HOME_DIR / ".gemini" / "antigravity"
+CONFIG_DIR = platform_info.get_config_dir()
 CONFIG_FILE = CONFIG_DIR / "mcp_config.json"
 BACKUP_FILE = CONFIG_DIR / "mcp_config.original.json"
 ROOT_PATH_FILE = CONFIG_DIR / "root_path.txt"
 MY_SERVER_NAME = "mcpv-proxy"
 
-# 안티그래비티 경로
-ANTIGRAVITY_PATH = Path(os.environ["LOCALAPPDATA"]) / "Programs" / "Antigravity"
-ANTIGRAVITY_EXE = ANTIGRAVITY_PATH / "Antigravity.exe"
-BOOSTER_SCRIPT = CONFIG_DIR / "boost_launcher.bat"
+# 안티그래비티 경로 (Cross-platform)
+ANTIGRAVITY_PATH = platform_info.get_antigravity_exe_path().parent
+ANTIGRAVITY_EXE = platform_info.get_antigravity_exe_path()
+BOOSTER_SCRIPT = CONFIG_DIR / platform_info.get_booster_script_name()
 
 class VaultManager:
     def __init__(self):
         self.stack = AsyncExitStack()
         self.sessions = {}
+        self._session_locks = {}  # Per-server locks
+        self._global_lock = asyncio.Lock()
+        self._session_stacks = {}  # Store session-specific stacks to keep them alive
 
     def install(self, force: bool = False):
         """1. MCP Config 하이재킹 및 경로 고정"""
@@ -198,10 +203,26 @@ exit
             print(f"⚠️  Booster installation failed: {e}", file=sys.stderr)
 
     def _create_shortcut(self, target, name, icon):
+        """Create cross-platform launcher using platform_utils."""
+        try:
+            # Target is the batch script, icon is the Antigravity executable
+            launcher_path = platform_utils.create_launcher(
+                name=name,
+                target=target,
+                icon=icon,
+                hidden_window=True
+            )
+            print(f"   -> Launcher created at: {launcher_path}", file=sys.stderr)
+        except Exception as e:
+            print(f"⚠️  Cross-platform launcher creation failed: {e}", file=sys.stderr)
+            print("   -> Attempting Windows-only fallback...", file=sys.stderr)
+            self._create_shortcut_windows_only(target, name, icon)
+    
+    def _create_shortcut_windows_only(self, target, name, icon):
+        """Fallback Windows-only shortcut creation (legacy behavior)."""
         desktop = Path(os.environ["USERPROFILE"]) / "Desktop"
         link_path = desktop / f"{name}.lnk"
         
-        # PowerShell command to create shortcut
         ps_command = (
             f'$ws = New-Object -ComObject WScript.Shell; '
             f'$s = $ws.CreateShortcut("{link_path}"); '
@@ -214,59 +235,51 @@ exit
         
         try:
             subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_command], 
-                check=True, 
-                stdout=subprocess.PIPE, 
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_command],
+                check=True,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-
         except Exception as e:
-             # Try to decode stderr if possible
-             err_msg = str(e)
-             if isinstance(e, subprocess.CalledProcessError) and e.stderr:
-                 err_msg = e.stderr.decode(errors='replace').strip()
-             
-             print(f"⚠️  PowerShell shortcut creation failed: {err_msg}", file=sys.stderr)
-             print("   -> Attempting legacy VBScript fallback...", file=sys.stderr)
-             self._create_shortcut_vbs(target, name, icon)
-
-    def _create_shortcut_vbs(self, target, name, icon):
-        desktop = Path(os.environ["USERPROFILE"]) / "Desktop"
-        link_path = desktop / f"{name}.lnk"
-        vbs_script = f'''
-            Set oWS = WScript.CreateObject("WScript.Shell")
-            sLinkFile = "{link_path}"
-            Set oLink = oWS.CreateShortcut(sLinkFile)
-            oLink.TargetPath = "cmd.exe"
-            oLink.Arguments = "/c ""{target}"""
-            oLink.IconLocation = "{icon},0"
-            oLink.WindowStyle = 7 
-            oLink.Save
-        '''
-        vbs_file = CONFIG_DIR / "create_shortcut.vbs"
-        try:
-            with open(vbs_file, "w", encoding="utf-8") as f: f.write(vbs_script)
-            os.system(f"cscript //nologo {vbs_file}")
-        finally:
-            if vbs_file.exists(): os.remove(vbs_file)
+            err_msg = str(e)
+            if isinstance(e, subprocess.CalledProcessError) and e.stderr:
+                err_msg = e.stderr.decode(errors='replace').strip()
+            print(f"⚠️  Windows fallback failed: {err_msg}", file=sys.stderr)
 
 
 
 
     async def get_session(self, server_name):
         """Get or create session for server. Returns None on timeout (REQ-05)."""
+        # Fast path - avoid lock contention for existing sessions
         if server_name in self.sessions:
             return self.sessions[server_name]
         
-        if not BACKUP_FILE.exists():
-            raise FileNotFoundError("Vault is empty.")
+        # Acquire global lock for session creation coordination
+        async with self._global_lock:
+            # Double-check after acquiring lock
+            if server_name in self.sessions:
+                return self.sessions[server_name]
+            
+            # Create per-server lock if it doesn't exist
+            if server_name not in self._session_locks:
+                self._session_locks[server_name] = asyncio.Lock()
         
-        with open(BACKUP_FILE, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        
-        srv = config["mcpServers"].get(server_name)
-        if not srv:
-            raise ValueError(f"Server {server_name} not found.")
+        # Acquire per-server lock for serialized session creation
+        async with self._session_locks[server_name]:
+            # Triple-check inside per-server lock
+            if server_name in self.sessions:
+                return self.sessions[server_name]
+            
+            if not BACKUP_FILE.exists():
+                raise FileNotFoundError("Vault is empty.")
+            
+            with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            
+            srv = config["mcpServers"].get(server_name)
+            if not srv:
+                raise ValueError(f"Server {server_name} not found.")
         
         # [수정됨] 상류 서버 실행 시 CI=true 강제 주입
         upstream_env = os.environ.copy()
@@ -305,11 +318,9 @@ exit
             )
             await asyncio.wait_for(session.initialize(), timeout=CONNECTION_TIMEOUT)
             
-            # Success: transfer resources to permanent stack
-            # Pop from temp and push to permanent (resources stay alive)
-            for cm in temp_stack._exit_callbacks:
-                self.stack._exit_callbacks.append(cm)
-            temp_stack._exit_callbacks.clear()
+            # Success: store temp_stack to keep resources alive
+            # This avoids manipulating private _exit_callbacks attribute
+            self._session_stacks[server_name] = temp_stack
             
             self.sessions[server_name] = session
             return session
@@ -329,29 +340,38 @@ exit
 
     def update_config(self, server_name: str, key: str, value: bool) -> bool:
         """Updates a specific boolean key in the mcp_config.original.json (BACKUP_FILE)."""
-        if not BACKUP_FILE.exists(): return False
+        if not BACKUP_FILE.exists():
+            return False
         try:
-            with open(BACKUP_FILE, "r", encoding="utf-8") as f: config = json.load(f)
-            if server_name not in config.get("mcpServers", {}): return False
+            with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            if server_name not in config.get("mcpServers", {}):
+                return False
             
             config["mcpServers"][server_name][key] = value
             
             with open(BACKUP_FILE, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
             return True
-        except: return False
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            print(f"⚠️ Failed to update config: {e}", file=sys.stderr)
+            return False
 
     def update_disabled_tools(self, server_name: str, tool_name: str, disabled: bool) -> bool:
         """Updates the disabledTools list for a specific server."""
-        if not BACKUP_FILE.exists(): return False
+        if not BACKUP_FILE.exists():
+            return False
         try:
-            with open(BACKUP_FILE, "r", encoding="utf-8") as f: config = json.load(f)
+            with open(BACKUP_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
             srv = config.get("mcpServers", {}).get(server_name)
-            if not srv: return False
+            if not srv:
+                return False
             
             disabled_list = srv.get("disabledTools", [])
             if disabled:
-                if tool_name not in disabled_list: disabled_list.append(tool_name)
+                if tool_name not in disabled_list:
+                    disabled_list.append(tool_name)
             else:
                 disabled_list = [t for t in disabled_list if t != tool_name]
             
@@ -360,6 +380,8 @@ exit
             with open(BACKUP_FILE, "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
             return True
-        except: return False
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            print(f"⚠️ Failed to update disabled tools: {e}", file=sys.stderr)
+            return False
 
 manager = VaultManager()
